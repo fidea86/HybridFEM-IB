@@ -183,7 +183,6 @@ cout << "// Print mesh connectivity " << endl;
 
 }
 
-// {
 //     fespace V(Th, [P1,P1]);
 
 
@@ -196,11 +195,10 @@ cout << "// Print mesh connectivity " << endl;
 //         perm1[iglob] = Vh(k,iloc); 
 //         perm2[iglob] = Vh(k,iloc+3);
 //         permp[iglob] = Vh(k,iloc+6);
-//         // for each line of Vh related to a triangle made of A, B, C: (u1A, u1B, u1C, u2A, u2B, u2C, pA, pB, pC)
+//         for each line of Vh related to a triangle made of A, B, C: (u1A, u1B, u1C, u2A, u2B, u2C, pA, pB, pC)
 //       }
 //     }
 
 
 
-// }
 
