@@ -1,0 +1,88 @@
+// Compute the derivatives of the membrane positions with respect to s.
+// These are centred differences evaluated at the points (s+1/2), which is
+// equivalent to apply a forward difference to chi_s.
+// For the forward difference on the periodic domain, the value of s_{Nb+1}
+// is equivalent to the value of s_1.
+
+Fibx = 0;
+Fiby = 0;
+
+
+for (int ielS = 0; ielS < ns-1; ielS++){
+	dxs[ielS] = (xs[ielS+1] - xs[ielS])/ds;
+	dys[ielS] = (ys[ielS+1] - ys[ielS])/ds;
+	normXs[ielS] = sqrt(dxs[ielS]^2+dys[ielS]^2);
+}
+dxs[ns-1] = (xs[0] - xs[ns-1])/ds;
+dys[ns-1] = (ys[0] - ys[ns-1])/ds;
+
+
+normXs[ns-1] = sqrt(dxs[ns-1]^2+dys[ns-1]^2);
+// normXs[ns-1] = 1.e-12; 
+
+
+
+
+
+// Now we compute the tension, which is also given at the points (s+1/2),
+// and points in the direction of the tangent vector.
+for (int ielS = 0; ielS < ns; ielS++){
+	Tx[ielS] = sigma * dxs[ielS] * (1. - L/normXs[ielS]);
+	Ty[ielS] = sigma * dys[ielS] * (1. - L/normXs[ielS]);
+}
+
+// The force density is computed at the points s by taking a narrow centred
+// difference of the tension. This is equivalent to computing a backward
+// difference of T_{s+1/2}.
+// This assumes a simple linear spring model with resting length L.
+// For the backward difference on the periodic domain, the value of s_0
+// is equivalent to the value of s_{Nb}.
+
+for (int ielS = 1; ielS < ns; ielS++){
+	fx[ielS] = (Tx[ielS] - Tx[ielS-1])/ds;
+	fy[ielS] = (Ty[ielS] - Ty[ielS-1])/ds;
+}
+fx[0] = (Tx[0] - Tx[ns-1])/ds;
+fy[0] = (Ty[0] - Ty[ns-1])/ds;
+
+
+//--- another way of computing fx,fy
+// xskp[ns-1] = xs[0];
+// yskp[ns-1] = ys[0];
+// xskp[0] = xs[1];
+// yskp[0] = ys[1];
+
+// xskm[0] = xs[ns-1];
+// yskm[0] = ys[ns-1];
+// xskm[ns-1] = xs[ns-2];
+// yskm[ns-1] = ys[ns-2];
+
+// for (int ielS = 1; ielS < ns-1; ielS++){
+// 	xskp[ielS] = xs[ielS+1];
+// 	yskp[ielS] = ys[ielS+1];
+
+// 	xskm[ielS] = xs[ielS-1];
+// 	yskm[ielS] = ys[ielS-1];
+// }
+
+// for (int ielS = 0; ielS < ns; ielS++){
+// 	fx[ielS] = sigma * (xskp[ielS] + xskm[ielS] - 2.*xs[ielS])/(ds*ds);
+// 	fy[ielS] = sigma * (yskp[ielS] + yskm[ielS] - 2.*ys[ielS])/(ds*ds);
+// }
+//--- 
+
+// add contribution for each solid node to the rhs of the fluid connected dof
+for (int ielS = 0; ielS < ns; ielS++){
+  for(int inodeF=0; inodeF < supp^2; inodeF++){
+  	// deltaContr(ielS,inodeF) // contains the global fluid id 
+  	// delta(ielS,inodeF) // contains the value of the delta function in that node
+
+
+  	Fibx[][deltaContr(ielS,inodeF)] += fx[ielS]*ds*delta(ielS,inodeF);
+  	Fiby[][deltaContr(ielS,inodeF)] += fy[ielS]*ds*delta(ielS,inodeF);
+  	// not immediately into the rhs!! babba!
+  	// rhsf[perm1[ deltaContr(ielS,inodeF) ]] += fx[ielS]*ds*delta(ielS,inodeF);
+  	// rhsf[perm2[ deltaContr(ielS,inodeF) ]] += fy[ielS]*ds*delta(ielS,inodeF);
+  }
+}
+

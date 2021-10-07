@@ -1,0 +1,100 @@
+// Parameters
+int nn = 30;
+
+real dt     = 0.5e-3;
+real T = 10.;
+int  Nstep  = T/dt; 
+real rho = 1.;
+real gammap = 0.001;
+real mu = 0.035;
+
+// Mesh
+mesh Th = square(nn, nn);
+plot(Th, wait=1);
+
+// Fespace
+fespace Uh(Th, P1);
+Uh u1, u2, u1o, u2o;
+Uh v1, v2;
+
+fespace Ph(Th, P1);
+Ph p, q;
+
+fespace Vh(Th,[P1,P1,P1]);
+
+// Macro
+macro Grad(u1,u2) [dx(u1), dy(u1), dx(u2),dy(u2)] //
+
+macro UgradV(u1,u2,v1,v2) [[u1,u2]'*[dx(v1),dy(v1)],
+                        [u1,u2]'*[dx(v2),dy(v2)]] //
+macro div(u1,u2) (dx(u1) + dy(u2)) //
+
+// fespace Ph(Th,P0);
+// Ph hf = hTriangle;
+
+// Problems
+problem stokes ([u1, u2, p], [v1, v2, q])
+    = int2d(Th)(
+          rho/dt*u1*v1 
+        + rho/dt*u2*v2
+        // Grad U : Grad V
+        + mu*dx(u1)*dx(v1)
+        + mu*dy(u1)*dy(v1)
+        + mu*dx(u2)*dx(v2)
+        + mu*dy(u2)*dy(v2)
+        + dx(p)*v1
+        + dy(p)*v2
+        + q*(dx(u1) + dy(u2))
+        - 1e-10*p*q )
+    - int2d(Th)(
+          rho/dt*u1o*v1 
+        + rho/dt*u2o*v2 )
+    + int2d(Th)( 
+          gammap*(hTriangle^2/mu)*(dx(p)*dx(q) + dy(p)*dy(q))  ) // pressure stabilization
+    + on(1, 2, 4, u1=0, u2=0)
+    + on(3, u1=1, u2=0)
+    ;
+
+// Problem: DF differential fo F
+problem NavierStokes([u1, u2, p], [v1, v2, q])
+    = int2d(Th)(
+          rho/dt*u1*v1 
+        + rho/dt*u2*v2
+        // convection 
+        + rho*(u1o*dx(u1) + u2o*dy(u1))*v1
+        + rho*(u1o*dx(u2) + u2o*dy(u2))*v2
+        // Grad U : Grad V
+        + mu*dx(u1)*dx(v1)
+        + mu*dy(u1)*dy(v1)
+        + mu*dx(u2)*dx(v2)
+        + mu*dy(u2)*dy(v2)
+        + dx(p)*v1
+        + dy(p)*v2
+        + q*(dx(u1) + dy(u2))
+        - 1e-10*p*q )
+    - int2d(Th)(
+          rho/dt*u1o*v1 
+        + rho/dt*u2o*v2 )
+    + int2d(Th)( 
+          gammap*(hTriangle^2/mu)*(dx(p)*dx(q) + dy(p)*dy(q))  ) // pressure stabilization
+    + on(1, 2, 4, u1=0, u2=0)
+    + on(3, u1=1, u2=0)
+    ;
+
+
+
+u1o = 0;
+u2o = 0;
+
+// time loop 
+for (int n=0; n<Nstep; n++){
+
+  NavierStokes; 
+
+  u1o = u1;
+  u2o = u2;
+
+  // Plot
+plot([u1, u2], p, wait=0, fill=0);
+}
+

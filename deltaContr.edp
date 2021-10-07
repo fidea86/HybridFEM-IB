@@ -1,0 +1,157 @@
+deltaContr = 0;
+deltax = 0.;
+deltay = 0.;
+delta = 0.;
+
+Deltx = 0.;
+Delty = 0.;
+Delt = 0.;
+
+//---------------------------------------------
+// Building of the 16 nodes domain of influence of xs
+
+// for each solid node we loop over the  
+for (int ielS = 0; ielS < ns; ielS++){ 
+  // find the fluid element that contains the solid node 
+  iel = Th(xs[ielS],ys[ielS]).nuTriangle; 
+  // cout << " ielS = " << ielS << " , iel = " << iel << endl;
+
+  // loop over its nodes and its neighbors and store the indices that have a non-zero contribution 
+  // starting from creating the bounding box 
+  xmin = 1000.;
+  ymax = -1000.;
+  for (int iloc = 0; iloc < 3; iloc++){
+    if(Th[iel][iloc].x < xmin)
+      xmin = Th[iel][iloc].x;
+    // if(Th[iel][iloc].x > xmax)
+    //   xmax = Th[iel][iloc].x;
+    // if(Th[iel][iloc].y < ymin)
+    //   ymin = Th[iel][iloc].y;
+    if(Th[iel][iloc].y > ymax)
+      ymax = Th[iel][iloc].y;
+  }
+
+  upperTri = 0;
+  for (int iloc = 0; iloc < 3; iloc++)
+    if ((abs(Th[iel][iloc].x - xmin) <= toll) && (abs(Th[iel][iloc].y - ymax)<= toll))
+      upperTri = 1;
+
+  if (upperTri){
+    // cout << "Solid node into the upper tri " << endl;
+    ielUp = iel;
+    edge = 2;
+    ielDo = Th[iel].adj(edge);
+  } 
+  else {
+    // cout << "Solid node into the down tri " << endl;
+    edge = 1;
+    ielUp = Th[iel].adj(edge);
+    ielDo = iel;
+  }
+
+  // cout << "for ielS, ielUp = " << ielUp << " and ielDo = " << ielDo << endl;
+
+  for (int iloc = 0; iloc < 3; iloc++)
+    deltaContr(ielS,iloc) = Th[ielUp][iloc]; // global id of the iloc-nodes
+
+    deltaContr(ielS,3) = Th[ielDo][1]; // adding the idglob of the node 1 of the noighbor from edge 2
+
+    edge = 0;
+    neighb = Th[ielUp].adj(edge);
+    deltaContr(ielS,5) = Th[neighb][2]; // adding the idglob of the node 1 of the noighbor from edge 2
+    deltaContr(ielS,4) = deltaContr(ielS,5)-1;
+
+    edge = 2;
+    neighb= Th[ielDo].adj(edge);
+    deltaContr(ielS,6) = Th[neighb][0];
+    deltaContr(ielS,7) = deltaContr(ielS,6)+1;
+
+  // add remaining nodes from the one already saved 
+  for(int i = 0; i < 4; i++){
+    deltaContr(ielS,8 + 2*i) = deltaContr(ielS,2*i)-1;
+    deltaContr(ielS,9 + 2*i) = deltaContr(ielS,1+2*i)+1;
+  }
+
+}
+
+// Print solid nodes and fluid id connections: deltaContr(ns,supp^2);
+// for(int i = 0; i<ns; i++){
+//   cout << " The connections for solid node = " << i << " are:  "; 
+
+//   for(int j = 0; j<supp^2; j++)
+//     cout <<  deltaContr(i,j) << "  "; 
+
+//   cout << " \n\n\n\n\n"<<endl;
+// }
+
+
+//---------------------------------------------
+// Evaluation of the discrete delta at the fluid nodes for each structure node
+
+for (int ielS = 0; ielS < ns; ielS++){
+
+  for(int inodeF=0; inodeF < supp^2; inodeF++){
+
+    // X-DIRECTION  x-Xs
+    r = abs(Th(deltaContr(ielS,inodeF)).x - xs[ielS])/SpcDiscx;
+
+    if(r >= 2.+toll)
+      cout << " ERROR r >= 2 , r = " << r << endl;
+    // cout << " ielS ,  inodeF " << ielS << "  " << inodeF << endl;
+    // cout << " xs = " << xs[ielS] << " , " << " ys = " << ys[ielS] << endl;
+    // cout << " xf = " << Th(deltaContr(ielS,inodeF)).x << " , " << " yf = " << Th(deltaContr(ielS,inodeF)).y << endl;
+    // cout << " r = " << r << endl; 
+    // cout << " deltaContr(ielS,inodeF) = " << deltaContr(ielS,inodeF) << endl; 
+    // cout << " Th(deltaContr(ielS,inodeF)).x   = " << Th(deltaContr(ielS,inodeF)).x  << endl; 
+    // cout << "  xs[ielS] " << xs[ielS] << endl;
+
+    if(r <= 1.+toll)
+      deltax(ielS,inodeF) = (3. - 2.*r + sqrt(1. + 4.*r - 4.*r^2))/(8.*SpcDiscx);
+    else
+      deltax(ielS,inodeF) = (5. - 2.*r - sqrt(-7. + 12.*r - 4.*r*r) ) / (8.*SpcDiscx);
+    // if(isNaN(deltax(ielS,inodeF)))
+    //   cout << " ALLERT deltax NAN " << endl;
+
+
+    // Y-DIRECTION  y-Ys
+    r = abs(  real(Th(deltaContr(ielS,inodeF)).y) - ys[ielS])/SpcDiscy;
+    // cout << " r for y dir = " << r << endl; 
+    // cout << " Th(deltaContr(ielS,inodeF)).y   = " << Th(deltaContr(ielS,inodeF)).y << endl; 
+    // cout << "  ys[ielS] " << ys[ielS] << endl;
+    if(r >= 2.+toll)
+      cout << " ********* ERROR r >= 2, r = " << r  << endl;
+
+
+    
+    if(r <= 1.+toll)
+      deltay(ielS,inodeF) = (3. - 2.*r + sqrt(1. + 4.*r - 4.*r*r)) / (8.*SpcDiscy);
+    else 
+      deltay(ielS,inodeF) = (5. - 2.*r - sqrt(-7. + 12.*r - 4.*r*r)) / (8.*SpcDiscy);
+    // if(isNaN(deltay(ielS,inodeF)))
+    //   cout << " ALLERT deltay NAN " << endl;
+
+    // final delta computation
+    delta(ielS,inodeF) = deltax(ielS,inodeF)*deltay(ielS,inodeF);
+    if(isNaN(delta(ielS,inodeF)))
+      cout << " !!!!! ALLERT DELTA NAN " << endl;
+
+    // cout << " delta(ielS,inodeF) = " << delta(ielS,inodeF) << endl;
+
+    // only for plot pourposes 
+    Deltx[][deltaContr(ielS,inodeF)] = deltax(ielS,inodeF);
+    Delty[][deltaContr(ielS,inodeF)] = deltay(ielS,inodeF);
+    Delt[][deltaContr(ielS,inodeF)] = delta(ielS,inodeF);
+
+    // plot(Th, [xs,ys], [Deltx,Delty] , wait=1);
+    // plot(Th, [xs,ys], Delt , fill=1, wait=1, value=1);
+
+  }
+
+}
+
+
+
+
+
+
+

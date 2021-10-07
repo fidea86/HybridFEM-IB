@@ -1,0 +1,67 @@
+// Parameters
+int nn = 30;
+
+real dt     = 0.5e-3;
+real T = 10.;
+int  Nstep  = T/dt; 
+real rho = 1.;
+real gammap = 0.001;
+real mu = 0.035;
+
+// Mesh
+mesh Th = square(nn, nn);
+
+// Fespace
+fespace Uh(Th, P1);
+Uh u, v, uo, vo;
+Uh uu, vv;
+
+fespace Ph(Th, P1);
+Ph p, pp;
+
+fespace Vh(Th,[P1,P1,P1]);
+
+// fespace Ph(Th,P0);
+// Ph hf = hTriangle;
+
+// Problem
+problem stokes ([u, v, p], [uu, vv, pp])
+    = int2d(Th)(
+          rho/dt*u*uu 
+        + rho/dt*v*vv
+        + mu*dx(u)*dx(uu)
+        + mu*dy(u)*dy(uu)
+        + mu*dx(v)*dx(vv)
+        + mu*dy(v)*dy(vv)
+        + dx(p)*uu
+        + dy(p)*vv
+        + pp*(dx(u) + dy(v))
+        - 1e-10*p*pp )
+    - int2d(Th)(
+          rho/dt*uo*uu 
+        + rho/dt*vo*vv )
+    + int2d(Th)( 
+          gammap*(hTriangle^2/mu)*(dx(p)*dx(pp) + dy(p)*dy(pp))  ) // pressure stabilization
+    + on(1, 2, 4, u=0, v=0)
+    + on(3, u=1, v=0)
+    ;
+
+
+
+uo = 0;
+vo = 0;
+
+// time loop 
+for (int n=0; n<Nstep; n++){
+
+  stokes; 
+
+  uo = u;
+  vo = v;
+
+  // Plot
+plot([u, v], p, wait=0, fill=1);
+}
+
+
+
