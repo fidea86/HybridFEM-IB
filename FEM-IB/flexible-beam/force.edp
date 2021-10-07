@@ -1,0 +1,42 @@
+// Compute the derivatives of the membrane positions with respect to s.
+// These are centred differences evaluated at the points (s+1/2), which is
+// equivalent to apply a forward difference to chi_s.
+// For the forward difference on the periodic domain, the value of s_{Nb+1}
+// is equivalent to the value of s_1.
+
+// -  Torsional Springs
+// -  Target Points (fixed), for the first and last points 
+
+
+Fibx = 0;
+Fiby = 0;
+
+//--- target point force 
+for (int ielST = 0; ielST < ntp; ielST++){
+	cout << " ielST = " << ielST << endl;
+	cout << " idt[ielST] = " << idt[ielST] << endl;
+	cout << " idt[ielST] = " << idt[ielST] << endl;
+	fx[idt[ielST]] = -kt*(xs[idt[ielST]] - xst[ielST]);
+	fy[idt[ielST]] = -kt*(ys[idt[ielST]] - yst[ielST]);
+}
+
+//--- Torsional Springs
+for (int ielS = 1; ielS < ns-1; ielS++){ // to change if the target point are different
+	dlm = sqrt( (xs[ielS]-xs[ielS-1])^2 + (ys[ielS]-ys[ielS-1])^2 );
+	drm = sqrt( (xs[ielS]-xs[ielS+1])^2 + (ys[ielS]-ys[ielS+1])^2 );
+	coeff = kb * ( (xs[ielS+1]-xs[ielS])*(ys[ielS]-ys[ielS-1]) - (ys[ielS+1]-ys[ielS])*(xs[ielS]-xs[ielS-1]) - dlm*drm*sin(theta) );       
+	fx[ielS] = coeff * (ys[ielS] - ys[ielS-1] + ys[ielS+1] - ys[ielS]);
+	fy[ielS] = coeff * ( - xs[ielS+1] + xs[ielS] - xs[ielS] + xs[ielS-1]);
+}
+
+//--- add contribution for each solid node to the rhs of the fluid connected dof
+for (int ielS = 0; ielS < ns; ielS++){
+  for(int inodeF=0; inodeF < supp^2; inodeF++){
+  	// deltaContr(ielS,inodeF) // contains the global fluid id 
+  	// delta(ielS,inodeF) // contains the value of the delta function in that node
+
+  	Fibx[][deltaContr(ielS,inodeF)] += fx[ielS]*ds*delta(ielS,inodeF);
+  	Fiby[][deltaContr(ielS,inodeF)] += fy[ielS]*ds*delta(ielS,inodeF);
+  }
+}
+
