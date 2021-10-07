@@ -1,4 +1,4 @@
-// MeshMesh
+// Mesh
 mesh Th = square(4, 4);
 
 plot(Th, wait=1);
