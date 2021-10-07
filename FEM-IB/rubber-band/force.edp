@@ -18,10 +18,6 @@ dys[ns-1] = (ys[0] - ys[ns-1])/ds;
 
 
 normXs[ns-1] = sqrt(dxs[ns-1]^2+dys[ns-1]^2);
-// normXs[ns-1] = 1.e-12; 
-
-
-
 
 
 // Now we compute the tension, which is also given at the points (s+1/2),
