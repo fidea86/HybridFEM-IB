@@ -191,7 +191,7 @@ cout << "// Print mesh connectivity " << endl;
 //     real ndof = V.ndof; // total nb of dofs
 
 //     for (int k=0; k < nbt; ++k) { // for each triangle
-//       for (int iloc =0; iloc <3; iloc++) { // for each local label
+//       for (int iloc =0; iloc <3; iloc++) { // for each local label of the triangle
 //         int iglob = Th[k][iloc]; // get the global label of the dof
 //         perm1[iglob] = Vh(k,iloc); 
 //         perm2[iglob] = Vh(k,iloc+3);
