@@ -1,0 +1,376 @@
+load "UMFPACK64"
+
+// Parameters
+int nn = 2*round(2.^4);  // number of fluid edges on each side 
+// nn = 3;
+real Lf=1.;
+real SpcDiscx; 
+real SpcDiscy;
+real toll;
+
+SpcDiscx = Lf/nn;
+SpcDiscy = SpcDiscx;
+toll = SpcDiscx/3.;
+
+real dt = 5e-5; //= 0.5e-3;
+real t;
+real T = 1.1;
+int  Nstep  = int(T/dt); 
+dt = T/Nstep;
+
+real rho = 1.;
+real gammap = 0.001;
+real mu = 0.1;
+
+// Mesh
+mesh Th = square(nn, nn); // [0,1]^2
+// plot(Th, wait=1);
+
+//---------------------------------------------
+// Immersed structure parameters
+real kt = 2.e8;     // Spring constant.
+int ntp = 2;
+
+real rmin = 0.2;      // Length of semi-minor axis.
+real rmax = 0.4;      // Length of semi-major axis.
+real req = sqrt(rmin*rmax);
+
+real dlm = 0.;
+real drm = 0.;
+real coeff = 0.;
+real kb = 7.5e9;
+real theta = 0;       // target angle
+int ns = 2*nn; // number of solid nodes, ns-1 edges, 64 points
+int supp = 4;
+real Ls = 0.5;
+
+// solid mesh 
+real[int] ss(ns), xs(ns), ys(ns), xso(ns), yso(ns),  xsInit(ns), ysInit(ns), ux(supp^2), uy(supp^2);
+real[int] xsp(ns+1), ysp(ns+1);
+real[int] dxs(ns), dys(ns), normXs(ns), Tx(ns), Ty(ns), fx(ns), fy(ns);
+real[int] xskp(ns), xskm(ns), yskp(ns), yskm(ns);
+real[int] xst(ntp), yst(ntp), idt(ntp);
+real[int] sgsgs(ns*2);
+
+real ds = Ls/(ns-1);
+
+for (int i = 0; i < ns; i++){
+  ss[i] = ds*i;
+  xs[i] = 0.25+ss[i]; 
+  ys[i] = -2.*xs[i]*xs[i] + 2.*xs[i]+0.125;
+}
+xsInit = xs;
+ysInit = ys;
+xso = xs; 
+yso = ys;
+
+// target point information
+idt[0]=0;
+idt[1]=ns-1;
+
+xst[0]=0.25;
+yst[0]=0.5;
+xst[1]=0.75;
+yst[1]=0.5;
+
+
+// xs[0] = 0.52;
+// ys[0] = 0.53;
+// xs[1] = 0.57;
+// ys[1] = 0.46;
+
+
+// Mesh + immersed solid
+plot(Th, [xs,ys], wait=1);
+
+//---------------------------------------------
+// Fespace definition, periodic is a problem because the ordering of the dof becomes totally different, 
+// better to avoid it
+fespace Uh(Th, P1); //, periodic=[[2, y], [4, y], [1, x], [3, x]]);
+// cout << " Uh.ndof = " << Uh.ndof << endl;
+
+Uh u1, u2, u1o, u2o;
+Uh v1, v2;
+Uh Deltx, Delty, Delt, Fibx, Fiby;
+
+fespace Ph(Th, P1) ; //, periodic=[[2, y], [4, y], [1, x], [3, x]]);
+Ph p, q;
+
+// fespace Vh(Th,[P1,P1,P1]);
+fespace Vh(Th,[P1,P1,P1]); //, periodic=[[2, y], [4, y], [1, x], [3, x]]);
+
+// definitions for algebraic formulation 
+int nbt =  Th.nt ; // nb of triangles
+int nbpermv = Uh.ndof; // nb of dofs for one component of velocity
+int nbpermp = Ph.ndof; // nb of dofs for one component of pressure
+int [int] perm1(nbpermv), perm2(nbpermv), permp(nbpermp); // connect ordering of each fluid velocity component, with the full vector of the unknown
+real ndof = Vh.ndof; // total nb of dofs
+real [int] rhsf(ndof), solf(ndof); // definition of the full right hand side and of the full vector of solution
+real [int] auxf1(Uh.ndof), auxf2(auxf1.n); // definition of the right hand side dedicated to u1 and of the right hand side dedicated to u2
+
+for (int k=0; k < nbt; ++k) { // for each triangle
+  for (int iloc =0; iloc <3; iloc++) { // for each local label
+    int iglob = Th[k][iloc]; // get the global label of the dof
+    perm1[iglob] = Vh(k,iloc); 
+    perm2[iglob] = Vh(k,iloc+3);
+    permp[iglob] = Vh(k,iloc+6);
+    // for each line of Vh related to a triangle made of A, B, C: (u1A, u1B, u1C, u2A, u2B, u2C, pA, pB, pC)
+  }
+}
+
+
+// Macro, not used 
+macro Grad(u1,u2) [dx(u1), dy(u1), dx(u2),dy(u2)] //
+
+macro UgradV(u1,u2,v1,v2) [[u1,u2]'*[dx(v1),dy(v1)],
+                        [u1,u2]'*[dx(v2),dy(v2)]] //
+macro div(u1,u2) (dx(u1) + dy(u2)) //
+
+// fespace Hh(Th,P0);
+// Hh hf = hTriangle;
+
+//---------------------------------------------
+// Problems
+problem stokes([u1, u2, p], [v1, v2, q])
+    = int2d(Th)(
+          (rho/dt)*u1*v1 
+        + (rho/dt)*u2*v2
+        + (mu)*dx(u1)*dx(v1)
+        + mu*dy(u1)*dy(v1)
+        + mu*dx(u2)*dx(v2)
+        + mu*dy(u2)*dy(v2)
+        + dx(p)*v1
+        + dy(p)*v2
+        + q*(dx(u1) + dy(u2))
+        - 1e-10*p*q )
+    - int2d(Th)(
+          rho/dt*u1o*v1 
+        + rho/dt*u2o*v2 )
+    + int2d(Th)( 
+          gammap*(hTriangle^2/mu)*(dx(p)*dx(q) + dy(p)*dy(q))  ) // pressure stabilization
+    + on(1, 2, 4, u1=0, u2=0)
+    + on(3, u1=1, u2=0)
+    ;
+
+// Problem: DF differential of F
+problem NavierStokes([u1, u2, p], [v1, v2, q])
+    = int2d(Th)(
+          rho/dt*u1*v1 
+        + rho/dt*u2*v2
+        // convection 
+        + rho*(u1o*dx(u1) + u2o*dy(u1))*v1
+        + rho*(u1o*dx(u2) + u2o*dy(u2))*v2
+        // Grad U : Grad V
+        + mu*dx(u1)*dx(v1)
+        + mu*dy(u1)*dy(v1)
+        + mu*dx(u2)*dx(v2)
+        + mu*dy(u2)*dy(v2)
+        + dx(p)*v1
+        + dy(p)*v2
+        + q*(dx(u1) + dy(u2))
+        - 1e-10*p*q )
+    - int2d(Th)(
+          rho/dt*u1o*v1 
+        + rho/dt*u2o*v2 )
+    + int2d(Th)( 
+          gammap*(hTriangle^2/mu)*(dx(p)*dx(q) + dy(p)*dy(q))  ) // pressure stabilization
+    // + on(1, 2, 4, u1=0., u2=0.)
+    // + on(3, u1=1., u2=0.)
+    + int1d(Th,1,2,3,4)( 1.e30*u1*v1 + 1.e30*u2*v2 )
+    - int1d(Th,1,2,3,4)( 1.e30*0.*v2 )
+    - int1d(Th,1,2,4)( 1.e30*0.*v1 ) 
+    // - int1d(Th, 3)( 1.e30*1.*v1 ) // to select this for the lid-driven cavity
+    - int1d(Th, 3)( 1.e30*0.*v1 )
+    ;
+
+problem NavierStokesON([u1, u2, p], [v1, v2, q])
+    = int2d(Th)(
+          rho/dt*u1*v1 
+        + rho/dt*u2*v2
+        // convection 
+        + rho*(u1o*dx(u1) + u2o*dy(u1))*v1
+        + rho*(u1o*dx(u2) + u2o*dy(u2))*v2
+        // Grad U : Grad V
+        + mu*dx(u1)*dx(v1)
+        + mu*dy(u1)*dy(v1)
+        + mu*dx(u2)*dx(v2)
+        + mu*dy(u2)*dy(v2)
+        + dx(p)*v1
+        + dy(p)*v2
+        + q*(dx(u1) + dy(u2))
+        - 1e-10*p*q )
+    - int2d(Th)(
+          rho/dt*u1o*v1 
+        + rho/dt*u2o*v2 )
+    + int2d(Th)( 
+          gammap*(hTriangle^2/mu)*(dx(p)*dx(q) + dy(p)*dy(q))  ) // pressure stabilization
+    + on(1, 2, 4, u1=0., u2=0.)
+    // + on(3, u1=1., u2=0.) // to select this for the lid-driven cavity
+    + on(3, u1=0., u2=0.)
+;
+
+// NS with algebraic form 
+
+varf NSvarf([u1, u2, p], [v1, v2, q]) = 
+      int2d(Th)(
+          rho/dt*u1*v1 
+        + rho/dt*u2*v2
+        // convection 
+        + rho*(u1o*dx(u1) + u2o*dy(u1))*v1
+        + rho*(u1o*dx(u2) + u2o*dy(u2))*v2
+        // + rho*(u1o*dx(u1) + u2o*dy(u1) + u1*dx(u1o) + u2*dy(u1o))*v1
+        // + rho*(u1o*dx(u2) + u2o*dy(u2) + u1*dx(u2o) + u2*dy(u2o))*v2
+        // Grad U : Grad V
+        + mu*dx(u1)*dx(v1)
+        + mu*dy(u1)*dy(v1)
+        + mu*dx(u2)*dx(v2)
+        + mu*dy(u2)*dy(v2)
+        + dx(p)*v1
+        + dy(p)*v2
+        + q*(dx(u1) + dy(u2))
+        - 1e-10*p*q )
+    + int2d(Th)( 
+          gammap*(hTriangle^2/mu)*(dx(p)*dx(q) + dy(p)*dy(q))  ) // pressure stabilization
+    + int1d(Th,1,2,3,4)( 1.e30*u1*v1 + 1.e30*u2*v2 )
+    // + on(1, 2, 3, 4, u1=0, u2=0)
+    // + on(3, u1=1, u2=0)
+    ;
+
+varf nsBCs([u1, u2, p], [v1, v2, q]) = 
+      on(1, 2, 4, u1=0, u2=0)
+    + on(3, u1=1, u2=0)
+    ;
+
+
+varf rhsfv1(unused,v1) = int2d(Th)( rho/dt*u1o*v1 )
+                        + int2d(Th)( Fibx*v1 );
+                         // + int1d(Th,3)( 1.e30*1.*v1 ); // to select this for the lid-driven cavity
+                         // + int1d(Th,1,2,4)( 1.e30*0.*v1 );
+varf rhsfv2(unused,v2) = int2d(Th)( rho/dt*u2o*v2 )
+                        + int2d(Th)( Fiby*v2 );
+                         // + int1d(Th,1,2,3,4)( 1.e30*0.*v2 );
+
+//--- Algebraic form
+//- matrix fluid
+matrix Af = NSvarf(Vh,Vh);
+//- chose the method for the resolution of the system
+set(Af,solver=UMFPACK);
+   
+
+//---------------------------------------------
+// IBM definitions 
+
+int [int,int] deltaContr(ns,supp^2); // number of solid nodes * delta supp^2
+
+int iel;
+real xmin = 1000., ymin = 1000.;
+real xmax = -1000., ymax = -1000.;
+bool upperTri = 0;
+int ielUp;
+int ielDo;
+int neighb;
+int edge;
+
+real [int,int] deltax(ns,supp^2); 
+real [int,int] deltay(ns,supp^2); 
+real [int,int] delta(ns,supp^2); 
+Deltx = 0.;
+Delty = 0.;
+deltax = 0.;
+deltay = 0.;
+delta = 0.;
+Delt = 0.;
+real r;
+
+
+//---------------------------------------------
+u1o = 0;
+u2o = 0;
+
+// time loop 
+for (int n=0; n<Nstep; n++){
+
+  t = (n+1)*dt;
+  cout << " We are at time " << t << endl;
+
+  //--- contribution search and delta definition
+  include "deltaContr.edp" 
+
+  //--- update solid position at half time-step
+  //--- find the velocity at 
+  // for (int ielS = 0; ielS < ns; ielS++){
+  //   for(int inodeF=0; inodeF < supp^2; inodeF++){
+  //     // cout << " xs["<<ielS<<"] = " << xs[ielS] << endl; 
+  //     xs[ielS] += (0.5*dt*SpcDiscx*SpcDiscy)*delta(ielS,inodeF)*u1[][deltaContr(ielS,inodeF)];
+  //     if(isNaN(xs[ielS]))
+  //       cout << " ALLERT xs NAN " << endl;
+  //     ys[ielS] += (0.5*dt*SpcDiscx*SpcDiscy)*delta(ielS,inodeF)*u2[][deltaContr(ielS,inodeF)];
+  //     if(isNaN(ys[ielS]))
+  //       cout << " ALLERT ys NAN " << endl;
+  //   }
+  // }
+  // plot(Th, [xs,ys], wait=0, cmm=("after deltaContr = "+t));
+
+  //--- Force calculation  
+  cout << " Force computation  " << endl;
+  include "force.edp" 
+  cout << " Force computation done  " << endl;
+
+  //--- Computing the fluid rhs 
+  auxf1 = rhsfv1(0,Uh);
+  auxf2 = rhsfv2(0,Uh);  
+  for (int i=0; i < Uh.ndof; ++i) { // nb of dofs of space containing u1
+    rhsf[perm1[i]] = auxf1[i];
+    rhsf[perm2[i]] = auxf2[i];    
+  }
+
+  //--- solve fluid 
+  // NavierStokes;  
+  // plot(Th, [xs,ys], [u1, u2], p, wait=1, fill=0, value=0);
+  // cout << " Resolution of liner system with fix point at iteration  " << n << endl;
+  // for ( int i = 0; i < 10; i++ )
+  // {
+  //   u1o = u1;
+  //   u2o = u2;
+  //   solf = Af^-1*rhsf;
+  // }
+  solf = Af^-1*rhsf;
+  // cout << " Resolution done liner system " << endl;
+
+  // Post-processing
+  for (int i=0; i< Uh.ndof; ++i){
+    u1[][i] = solf[perm1[i]] ; // compute u1
+    u2[][i] = solf[perm2[i]] ; // compute u2
+  }
+  for (int i=0; i< Ph.ndof; ++i) 
+    p[][i] = solf[permp[i]]; // compute p
+
+  //--- contributions search and delta definition
+  include "deltaContr.edp"
+
+  //---  update position of the membrane 
+  // xs = xso;
+  // ys = yso;
+  for (int ielS = 0; ielS < ns; ielS++){
+    for(int inodeF=0; inodeF < supp^2; inodeF++){
+      xs[ielS] += (dt*SpcDiscx*SpcDiscy)*delta(ielS,inodeF)*u1[][deltaContr(ielS,inodeF)];
+      ys[ielS] += (dt*SpcDiscx*SpcDiscy)*delta(ielS,inodeF)*u2[][deltaContr(ielS,inodeF)];
+    }
+  }
+
+  //--- Plot
+  u1o = 0.1*u1;
+  u2o = 0.1*u2;
+  plot(Th, [xs,ys], [u1o,u2o], fill=0, wait=0, value=1, cmm=("time = "+t));
+  // plot(Th, [xsp,ysp], wait=0, cmm=("after  = "+t));
+
+  // update old velocity
+  u1o = u1;
+  u2o = u2;
+
+  xso = xs;
+  yso = ys;
+}
+
+
+
